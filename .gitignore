@@ -1,0 +1,8 @@
+node_modules
+
+target
+
+.env
+.snfoundry_cache
+.DS_Store
+*.lock
