@@ -51,3 +51,40 @@ Execute the test suite to ensure everything is working correctly:
 ```bash
 yarn test
 ```
+
+## **Deployment**  
+
+### Prerequisites
+- Node.js and Yarn installed
+- `.env` file with the following variables:
+DEPLOYER_PRIVATE_KEY=your_private_key
+DEPLOYER_ADDRESS=your_account_address
+
+### **1. Install Dependencies**  
+Run the following command to install required packages:  
+
+```bash
+yarn install
+```
+
+### **2.Build the contract**  
+```bash
+scarb build
+```
+### **3.Deploy Contract**  
+Launch a local Starknet development environment:
+
+```bash
+# Sepolia Testnet
+yarn deploy sepolia "https://starknet-sepolia.public.blastapi.io" <token_address>
+
+# Mainnet
+yarn deploy mainnet "https://your-mainnet-rpc" <token_address>
+
+# Local Devnet
+yarn deploy devnet "http://127.0.0.1:5050" <token_address>
+
+# Example
+yarn deploy sepolia "https://starknet-sepolia.public.blastapi.io" 0x4718F5A0FC34CC1AF16A1CDEE98FFB20C31F5CD61D6AB07201858F4287C938D
+```
+After successful deployment, a JSON file named .<network>_<contract_address>.json will be created in the project root directory containing all deployment details including contract address, transaction hash, and network information.
