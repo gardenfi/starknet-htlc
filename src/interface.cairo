@@ -10,34 +10,34 @@ pub trait IHTLC<TContractState> {
         redeemer: ContractAddress,
         timelock: u128,
         amount: u256,
-        secretHash: [u32; 8],
+        secret_hash: [u32; 8],
     );
 
-    fn initiateOnBehalf(
+    fn initiate_on_behalf(
         ref self: TContractState,
         initiator: ContractAddress,
         redeemer: ContractAddress,
         timelock: u128,
         amount: u256,
-        secretHash: [u32; 8],
+        secret_hash: [u32; 8],
     );
 
-    fn initiateWithSignature(
+    fn initiate_with_signature(
         ref self: TContractState,
         initiator: ContractAddress,
         redeemer: ContractAddress,
         timelock: u128,
         amount: u256,
-        secretHash: [u32; 8],
+        secret_hash: [u32; 8],
         signature: (felt252, felt252, bool),
     );
 
-    fn redeem(ref self: TContractState, orderID: felt252, secret: Array<u32>);
+    fn redeem(ref self: TContractState, order_id: felt252, secret: Array<u32>);
 
-    fn refund(ref self: TContractState, orderID: felt252);
+    fn refund(ref self: TContractState, order_id: felt252);
 
-    fn instantRefund(
-        ref self: TContractState, orderID: felt252, signature: (felt252, felt252, bool),
+    fn instant_refund(
+        ref self: TContractState, order_id: felt252, signature: (felt252, felt252, bool),
     );
 }
 

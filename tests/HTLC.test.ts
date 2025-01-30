@@ -290,7 +290,7 @@ describe("Starknet HTLC", () => {
       const { low, high } = cairo.uint256(parseEther("1"));
       await alice.execute({
         contractAddress: starknetHTLC.address,
-        entrypoint: "initiateOnBehalf",
+        entrypoint: "initiate_on_behalf",
         calldata: [alice.address, bob.address, 10n, low, high, ...secretHash3],
       });
     });
@@ -299,7 +299,7 @@ describe("Starknet HTLC", () => {
       const { low, high } = cairo.uint256(parseEther("1"));
       await alice.execute({
         contractAddress: starknetHTLC.address,
-        entrypoint: "initiateOnBehalf",
+        entrypoint: "initiate_on_behalf",
         calldata: [alice.address, bob.address, 10n, low, high, ...secretHash4],
       });
     });
@@ -350,7 +350,7 @@ describe("Starknet HTLC", () => {
 
       await alice.execute({
         contractAddress: starknetHTLC.address,
-        entrypoint: "initiateWithSignature",
+        entrypoint: "initiate_with_signature",
         calldata: [
           alice.address,
           bob.address,
@@ -386,7 +386,7 @@ describe("Starknet HTLC", () => {
       await expect(
         alice.execute({
           contractAddress: starknetHTLC.address,
-          entrypoint: "initiateWithSignature",
+          entrypoint: "initiate_with_signature",
           calldata: [
             charlie.address,
             bob.address,
@@ -636,7 +636,7 @@ describe("Starknet HTLC", () => {
       await expect(
         alice.execute({
           contractAddress: starknetHTLC.address,
-          entrypoint: "instantRefund",
+          entrypoint: "instant_refund",
           calldata: calldata,
         })
       ).rejects.toThrow("HTLC: invalid redeemer signature");
@@ -661,7 +661,7 @@ describe("Starknet HTLC", () => {
 
       await alice.execute({
         contractAddress: starknetHTLC.address,
-        entrypoint: "instantRefund",
+        entrypoint: "instant_refund",
         calldata: [orderID, cairo.tuple(r, s, recovery ? 1n : 0n)],
       });
     });
