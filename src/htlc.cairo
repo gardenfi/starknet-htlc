@@ -1,3 +1,14 @@
+//! # HTLC Smart Contract for Atomic Swaps
+//!
+//! @author  Garden Finance
+//! @title   HTLC smart contract for atomic swaps
+//! @notice  Any signer can create an order to serve as one of either halves of a cross-chain
+//!          atomic swap for any user with respective valid signatures.
+//! @dev     The contract can be used to create an order to serve as the commitment for two
+//!          types of users:
+//!          Initiator functions: 1. initiate
+//!                               2. refund
+//!          Redeemer function: 1. redeem
 #[starknet::contract]
 pub mod HTLC {
     use core::num::traits::Zero;
@@ -70,6 +81,16 @@ pub mod HTLC {
             self.token.read().contract_address
         }
 
+        /// @notice  Signers can create an order with order params.
+        /// @dev     Secret used to generate secret hash for initiation should be generated randomly
+        ///          and SHA-256 hash should be used to support hashing methods on other non-EVM
+        ///          chains.
+        ///          Signers cannot generate orders with the same secret hash or override an
+        ///          existing order.
+        /// @param   redeemer  Contract address of the redeemer.
+        /// @param   timelock  Timelock period for the HTLC order.
+        /// @param   amount  Amount of tokens to trade.
+        /// @param   secret_hash  SHA-256 hash of the secret used for redemption.
         fn initiate(
             ref self: ContractState,
             redeemer: ContractAddress,
@@ -82,6 +103,15 @@ pub mod HTLC {
             self._initiate(sender, sender, redeemer, timelock, amount, secret_hash);
         }
 
+        /// @notice  Allows a signer to initiate an order on behalf of another initiator.
+        /// @dev     Ensures the provided parameters are valid before initiating the order.
+        ///          Calls `_initiate` with the sender as the initiator.
+        ///
+        /// @param   initiator    Contract address of the actual initiator.
+        /// @param   redeemer     Contract address of the redeemer.
+        /// @param   timelock     Timelock period for the HTLC order.
+        /// @param   amount       Amount of tokens to be locked.
+        /// @param   secret_hash  SHA-256 hash of the secret used for redemption.
         fn initiate_on_behalf(
             ref self: ContractState,
             initiator: ContractAddress,
@@ -95,6 +125,18 @@ pub mod HTLC {
             self._initiate(sender, initiator, redeemer, timelock, amount, secret_hash);
         }
 
+        /// @notice  Signers can create an order with order params and signature for a user.
+        /// @dev     Secret used to generate secret hash for initiation should be generated randomly
+        ///          and SHA-256 hash should be used to support hashing methods on other non-EVM
+        ///          chains.
+        ///          Signers cannot generate orders with the same secret hash or override an
+        ///          existing order.
+        /// @param   redeemer  Contract address of the redeemer.
+        /// @param   timelock  Timelock period for the HTLC order.
+        /// @param   amount  Amount of tokens to trade.
+        /// @param   secret_hash  SHA-256 hash of the secret used for redemption.
+        /// @param   signature  SNIP-12 signature provided by an authorized user for initiation.
+        ///                     The user will be assigned as the initiator.
         fn initiate_with_signature(
             ref self: ContractState,
             initiator: ContractAddress,
@@ -116,6 +158,12 @@ pub mod HTLC {
             self._initiate(initiator, initiator, redeemer, timelock, amount, secret_hash);
         }
 
+        /// @notice  Signers with the correct secret to an order's secret hash can redeem to claim
+        /// the locked token.
+        /// @dev     Signers are not allowed to redeem an order with the wrong secret or redeem the
+        /// same order multiple times.
+        /// @param   order_id  Order ID of the HTLC order.
+        /// @param   secret  Secret used to redeem an order.
         fn redeem(ref self: ContractState, order_id: felt252, secret: Array<u32>) {
             let order = self.orders.read(order_id);
             assert!(order.redeemer.is_non_zero(), "HTLC: order not initiated");
@@ -143,6 +191,11 @@ pub mod HTLC {
             self.emit(Event::Redeemed(Redeemed { order_id, secret_hash, secret }));
         }
 
+        /// @notice  Signers can refund the locked assets after the timelock block number.
+        /// @dev     Signers cannot refund an order before the expiry block number or refund the
+        /// same order multiple times.
+        ///          Funds will be safely transferred to the initiator.
+        /// @param   order_id  Order ID of the HTLC order.
         fn refund(ref self: ContractState, order_id: felt252) {
             let order = self.orders.read(order_id);
 
@@ -174,6 +227,13 @@ pub mod HTLC {
             self.emit(Event::Refunded(Refunded { order_id }));
         }
 
+        /// @notice  Redeemers can let the initiator refund the locked assets before the expiry
+        /// block number.
+        /// @dev     Signers cannot refund the same order multiple times.
+        ///          Funds will be safely transferred to the initiator.
+        ///
+        /// @param   order_id  Order ID of the HTLC order.
+        /// @param   signature  SNIP-12 signature provided by the redeemer for instant refund.
         fn instant_refund(ref self: ContractState, order_id: felt252, signature: Array<felt252>) {
             let refund = instantRefund { orderID: order_id };
 
@@ -208,6 +268,20 @@ pub mod HTLC {
 
     #[generate_trait]
     pub impl InternalFunctions of InternalFunctionsTrait {
+        /// @notice  Internal function to initiate an order for an atomic swap.
+        /// @dev     This function is called internally to create a new order for an atomic swap.
+        ///          It checks that the initiator and redeemer addresses are different and that
+        ///          there is no duplicate order.
+        ///          It creates a new order with the provided parameters and stores it in the
+        ///          'orders' mapping.
+        ///          It emits an 'Initiated' event with the order ID, secret hash, and amount.
+        ///          It transfers the specified amount of tokens from the initiator to the contract
+        ///          address.
+        /// @param   initiator  Address of the initiator of the atomic swap.
+        /// @param   redeemer  Address of the redeemer of the atomic swap.
+        /// @param   secret_hash  Hash of the secret used for redemption.
+        /// @param   timelock  Timelock block number for the atomic swap.
+        /// @param   amount  Amount of tokens to be traded in the atomic swap.
         fn _initiate(
             ref self: ContractState,
             funder_: ContractAddress,
@@ -258,6 +332,12 @@ pub mod HTLC {
                 );
         }
 
+        /// @notice  Generates a unique swap ID based on chain ID, asset address, and user address.
+        /// @dev     Uses the Poseidon hash function to ensure uniqueness and security.
+        ///
+        /// @param   chain_id       Chain ID where the swap is being executed.
+        /// @param   asset_address  Address of the asset being swapped.
+        /// @param   user_address   Address of the user initiating the swap.
         fn generate_order_id(
             self: @ContractState,
             chain_id: felt252,
@@ -274,6 +354,14 @@ pub mod HTLC {
 
     #[generate_trait]
     impl AssertsImpl of AssertsTrait {
+        /// @notice  .
+        /// @dev     Provides checks to ensure:
+        ///              1. Redeemer is not the null address.
+        ///              3. Timelock is greater than 0.
+        ///              4. Amount is not zero.
+        /// @param   redeemer  Contract address of the redeemer.
+        /// @param   timelock  Timelock period for the HTLC order.
+        /// @param   amount  Amount of tokens to trade.
         fn safe_params(
             self: @ContractState, redeemer: ContractAddress, timelock: u128, amount: u256,
         ) {
