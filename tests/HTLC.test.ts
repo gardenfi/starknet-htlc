@@ -28,7 +28,7 @@ import { regTestUtils } from "./bitcoin/regtest";
 
 describe("Starknet HTLC", () => {
   const starknetProvider = new RpcProvider({
-    nodeUrl: "http://127.0.0.1:5050/rpc",
+    nodeUrl: "http://127.0.0.1:8547/rpc",
   });
 
   const accounts = [
