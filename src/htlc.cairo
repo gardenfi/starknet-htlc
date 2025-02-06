@@ -169,8 +169,9 @@ pub mod HTLC {
             };
             self.orders.write(order_id, updated_order);
 
-            let balance = self.token.read().balance_of(order.initiator);
-            assert!(balance >= order.amount, "Insufficient balance for transfer");
+            let contract_address = get_contract_address();
+            let balance = self.token.read().balance_of(contract_address);
+            assert!(balance >= order.amount, "HTLC: insufficient contract balance");
             self.token.read().transfer(order.initiator, order.amount);
 
             self.emit(Event::Refunded(Refunded { order_id }));
