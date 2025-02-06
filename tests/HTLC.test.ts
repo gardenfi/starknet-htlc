@@ -180,6 +180,10 @@ describe("Starknet HTLC", () => {
     it("HTLC should have 0 STARK token.", async () => {
       expect(await stark.balanceOf(starknetHTLC.address)).toBe(0n);
     });
+
+    it("Should be deployed with correct token address", async () => {
+      expect(await starknetHTLC.token()).toBe(BigInt(STARK));
+    });
   });
 
   describe("-- HTLC Initiate --", () => {

@@ -5,6 +5,8 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 pub trait IHTLC<TContractState> {
+    fn token(self: @TContractState) -> ContractAddress;
+
     fn initiate(
         ref self: TContractState,
         redeemer: ContractAddress,
@@ -36,9 +38,7 @@ pub trait IHTLC<TContractState> {
 
     fn refund(ref self: TContractState, order_id: felt252);
 
-    fn instant_refund(
-        ref self: TContractState, order_id: felt252, signature: Array<felt252>,
-    );
+    fn instant_refund(ref self: TContractState, order_id: felt252, signature: Array<felt252>);
 }
 
 pub trait IMessageHash<T> {

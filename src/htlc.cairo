@@ -69,6 +69,10 @@ pub mod HTLC {
 
     #[abi(embed_v0)]
     pub impl HTLC of IHTLC<ContractState> {
+        fn token(self: @ContractState) -> ContractAddress {
+            self.token.read().contract_address
+        }
+
         fn initiate(
             ref self: ContractState,
             redeemer: ContractAddress,
