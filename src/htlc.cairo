@@ -10,9 +10,6 @@ pub mod HTLC {
     use core::option::OptionTrait;
     use core::traits::{Into, TryInto};
     use core::sha256::compute_sha256_u32_array;
-    use core::array::ArrayTrait;
-    use alexandria_bytes::utils::BytesDebug;
-    use openzeppelin_token::erc20::{ERC20HooksEmptyImpl};
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::account::interface::{ISRC6Dispatcher, ISRC6DispatcherTrait};
     use core::hash::{HashStateTrait, HashStateExTrait};
@@ -107,7 +104,7 @@ pub mod HTLC {
             secret_hash: [u32; 8],
             signature: Array<felt252>,
         ) {
-            let intiate = Initiate { redeemer, amount, timelock, secretHash : secret_hash };
+            let intiate = Initiate { redeemer, amount, timelock, secretHash: secret_hash };
 
             let message_hash = intiate.get_message_hash(initiator);
 
@@ -121,8 +118,8 @@ pub mod HTLC {
 
         fn redeem(ref self: ContractState, order_id: felt252, secret: Array<u32>) {
             let order = self.orders.read(order_id);
-            assert(order.redeemer.is_non_zero(), 'HTLC: order not initiated');
-            assert(!order.is_fulfilled, 'HTLC: order fulfilled');
+            assert!(order.redeemer.is_non_zero(), "HTLC: order not initiated");
+            assert!(!order.is_fulfilled, "HTLC: order fulfilled");
 
             let secret_hash = compute_sha256_u32_array(secret.clone(), 0, 0);
             let initiator_address: felt252 = order.initiator.try_into().unwrap();
@@ -149,14 +146,14 @@ pub mod HTLC {
         fn refund(ref self: ContractState, order_id: felt252) {
             let order = self.orders.read(order_id);
 
-            assert(order.redeemer.is_non_zero(), 'HTLC: order not initiated');
-            assert(!order.is_fulfilled, 'HTLC: order fulfilled');
+            assert!(order.redeemer.is_non_zero(), "HTLC: order not initiated");
+            assert!(!order.is_fulfilled, "HTLC: order fulfilled");
 
             let block_info = get_block_info().unbox();
             let current_block = block_info.block_number;
-            assert(
+            assert!(
                 (order.initiated_at + order.timelock) < current_block.into(),
-                'HTLC: order not expired',
+                "HTLC: order not expired",
             );
 
             let updated_order = Order {
@@ -177,10 +174,8 @@ pub mod HTLC {
             self.emit(Event::Refunded(Refunded { order_id }));
         }
 
-        fn instant_refund(
-            ref self: ContractState, order_id: felt252, signature: Array<felt252>,
-        ) {
-            let refund = instantRefund { orderID : order_id };
+        fn instant_refund(ref self: ContractState, order_id: felt252, signature: Array<felt252>) {
+            let refund = instantRefund { orderID: order_id };
 
             let order = self.orders.read(order_id);
             let message_hash = refund.get_message_hash(order.redeemer);
@@ -258,13 +253,16 @@ pub mod HTLC {
             self
                 .emit(
                     Event::Initiated(
-                        Initiated { order_id, secret_hash : secret_hash_, amount: amount_ },
+                        Initiated { order_id, secret_hash: secret_hash_, amount: amount_ },
                     ),
                 );
         }
 
         fn generate_order_id(
-            self: @ContractState, chain_id: felt252, secret_hash: [u32; 8], initiator_address: felt252,
+            self: @ContractState,
+            chain_id: felt252,
+            secret_hash: [u32; 8],
+            initiator_address: felt252,
         ) -> felt252 {
             let mut state = PoseidonTrait::new();
             state = state.update(chain_id);

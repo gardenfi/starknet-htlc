@@ -8,7 +8,6 @@ import {
   TypedData,
   WeierstrassSignatureType,
   TypedDataRevision,
-  StarknetDomain,
   stark as sn,
 } from "starknet";
 import { generateOrderId, getCompiledCode, hexToU32Array } from "./utils";
@@ -31,6 +30,7 @@ describe("Starknet HTLC", () => {
     nodeUrl: "http://127.0.0.1:8547/rpc",
   });
 
+  // Prefund accounts from devnet
   const accounts = [
     {
       address:
@@ -57,6 +57,8 @@ describe("Starknet HTLC", () => {
         "0x0795974d45796c18ff5ae856dd20a3f1878061510f0fef5da10ade4393ecbf92",
     },
   ];
+
+  // Token address
   const STARK =
     "0x4718F5A0FC34CC1AF16A1CDEE98FFB20C31F5CD61D6AB07201858F4287C938D";
   const ZERO_ADDRESS =
@@ -122,7 +124,7 @@ describe("Starknet HTLC", () => {
     let minedBlockes = 0;
     stark.connect(charlie);
     while (minedBlockes < blocks) {
-      await stark.transfer(bob.address, parseEther("0.0001"));
+      await stark.transfer(bob.address, parseEther("0.0001"));   // Dummy transactions to mine blocks
       minedBlockes++;
     }
   };
@@ -168,6 +170,7 @@ describe("Starknet HTLC", () => {
     stark = new Contract(contractData.abi, STARK, starknetProvider);
     await deployHTLC();
 
+    // allowance for HTLC
     stark.connect(alice);
     await stark.approve(starknetHTLC.address, parseEther("500"));
     stark.connect(bob);
@@ -182,7 +185,7 @@ describe("Starknet HTLC", () => {
     });
 
     it("Should be deployed with correct token address", async () => {
-      expect(await starknetHTLC.token()).toBe(BigInt(STARK));
+      expect(await starknetHTLC.token()).toBe(BigInt(STARK)); // token() returns a felt252
     });
   });
 
@@ -193,7 +196,7 @@ describe("Starknet HTLC", () => {
         alice.execute({
           contractAddress: starknetHTLC.address,
           entrypoint: "initiate",
-          calldata: [ZERO_ADDRESS, 900n, low, high, ...secretHash1],
+          calldata: [ZERO_ADDRESS, 900n, low, high, ...secretHash1], // Cairo expects parameters in this format
         })
       ).rejects.toThrow("HTLC: zero address redeemer");
     });
@@ -264,7 +267,7 @@ describe("Starknet HTLC", () => {
       await alice.execute({
         contractAddress: starknetHTLC.address,
         entrypoint: "initiate",
-        calldata: [bob.address, 700n, low, high, ...secretHash1],
+        calldata: [bob.address, 700n, low, high, ...secretHash1], // HTLC expects secretHash as [u32;8] array
       });
     });
 
@@ -805,7 +808,7 @@ describe("Starknet HTLC", () => {
     beforeAll(async () => {
       BTCProvider = new BitcoinProvider(
         BitcoinNetwork.Regtest,
-        "http://localhost:30000"
+        "http://localhost:30000" // merry bitcoin node  
       );
       aliceBitcoinWallet = BitcoinWallet.createRandom(BTCProvider);
       bobBitcoinWallet = BitcoinWallet.createRandom(BTCProvider);
