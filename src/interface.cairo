@@ -29,7 +29,7 @@ pub trait IHTLC<TContractState> {
         timelock: u128,
         amount: u256,
         secret_hash: [u32; 8],
-        signature: (felt252, felt252, bool),
+        signature: Array<felt252>,
     );
 
     fn redeem(ref self: TContractState, order_id: felt252, secret: Array<u32>);
@@ -37,7 +37,7 @@ pub trait IHTLC<TContractState> {
     fn refund(ref self: TContractState, order_id: felt252);
 
     fn instant_refund(
-        ref self: TContractState, order_id: felt252, signature: (felt252, felt252, bool),
+        ref self: TContractState, order_id: felt252, signature: Array<felt252>,
     );
 }
 

@@ -346,7 +346,7 @@ describe("Starknet HTLC", () => {
       const signature = (await alice.signMessage(
         initiate
       )) as WeierstrassSignatureType;
-      const { r, s, recovery } = signature;
+      const { r, s } = signature;
 
       await alice.execute({
         contractAddress: starknetHTLC.address,
@@ -358,7 +358,7 @@ describe("Starknet HTLC", () => {
           low,
           high,
           ...secretHash7,
-          cairo.tuple(r, s, recovery ? 1n : 0n),
+          [r, s],
         ],
       });
     });
@@ -381,7 +381,7 @@ describe("Starknet HTLC", () => {
       const signature = (await alice.signMessage(
         initiate
       )) as WeierstrassSignatureType;
-      const { r, s, recovery } = signature;
+      const { r, s } = signature;
 
       await expect(
         alice.execute({
@@ -394,7 +394,7 @@ describe("Starknet HTLC", () => {
             low,
             high,
             ...secretHash8,
-            cairo.tuple(r, s, recovery ? 1n : 0n),
+            [r, s],
           ],
         })
       ).rejects.toThrow("HTLC: invalid initiator signature");
@@ -629,9 +629,9 @@ describe("Starknet HTLC", () => {
       const signature = (await charlie.signMessage(
         refund
       )) as WeierstrassSignatureType;
-      const { r, s, recovery } = signature;
+      const { r, s } = signature;
 
-      const calldata = [orderID, cairo.tuple(r, s, recovery ? 1n : 0n)];
+      const calldata = [orderID, [r, s]];
 
       await expect(
         alice.execute({
@@ -657,12 +657,12 @@ describe("Starknet HTLC", () => {
       const signature = (await bob.signMessage(
         refund
       )) as WeierstrassSignatureType;
-      const { r, s, recovery } = signature;
+      const { r, s } = signature;
 
       await alice.execute({
         contractAddress: starknetHTLC.address,
         entrypoint: "instant_refund",
-        calldata: [orderID, cairo.tuple(r, s, recovery ? 1n : 0n)],
+        calldata: [orderID, [r, s]],
       });
     });
   });

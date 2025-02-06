@@ -101,18 +101,14 @@ pub mod HTLC {
             timelock: u128,
             amount: u256,
             secret_hash: [u32; 8],
-            signature: (felt252, felt252, bool),
+            signature: Array<felt252>,
         ) {
             let intiate = Initiate { redeemer, amount, timelock, secretHash : secret_hash };
 
             let message_hash = intiate.get_message_hash(initiator);
-            let (sig_r, sig_s, _) = signature;
-            let mut array0 = ArrayTrait::new();
-            array0.append(sig_r);
-            array0.append(sig_s);
 
             let is_valid = ISRC6Dispatcher { contract_address: initiator }
-                .is_valid_signature(message_hash, array0.clone());
+                .is_valid_signature(message_hash, signature);
             let is_valid_signature = is_valid == starknet::VALIDATED || is_valid == 1;
             assert!(is_valid_signature, "HTLC: invalid initiator signature");
 
@@ -178,19 +174,15 @@ pub mod HTLC {
         }
 
         fn instant_refund(
-            ref self: ContractState, order_id: felt252, signature: (felt252, felt252, bool),
+            ref self: ContractState, order_id: felt252, signature: Array<felt252>,
         ) {
             let refund = instantRefund { orderID : order_id };
 
             let order = self.orders.read(order_id);
             let message_hash = refund.get_message_hash(order.redeemer);
-            let (sig_r, sig_s, _) = signature;
-            let mut array0 = ArrayTrait::new();
-            array0.append(sig_r);
-            array0.append(sig_s);
 
             let is_valid = ISRC6Dispatcher { contract_address: order.redeemer }
-                .is_valid_signature(message_hash, array0.clone());
+                .is_valid_signature(message_hash, signature);
             let is_valid_signature = is_valid == starknet::VALIDATED || is_valid == 1;
             assert!(is_valid_signature, "HTLC: invalid redeemer signature");
             assert!(!order.is_fulfilled, "HTLC: order fulfilled");
