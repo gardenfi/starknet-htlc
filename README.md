@@ -38,12 +38,7 @@ scarb build
 Launch a local Starknet development environment:
 
 ```bash
-yarn start:devnet
-```
-
-Start a local Ethereum test network using Hardhat:
-```bash
-yarn start:hardhat
+merry go
 ```
 ### **4. Run Tests**  
 Execute the test suite to ensure everything is working correctly:
