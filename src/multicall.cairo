@@ -16,14 +16,14 @@ mod Multicall {
     #[abi(embed_v0)]
     pub impl Multicall of super::IMulticall<ContractState>{
         fn multicall(self : @ContractState, address : ContractAddress , call_data : Array<Array<felt252>>){
+            assert(!call_data.is_empty(), 'Multicall : Empty call data');
             for mut data in call_data{
-                let selector = data.pop_front();
-                assert(selector.is_none(), 'Invalid call data');
+                let selector = data.pop_front().expect('Multicall : Invalid selector');
                 call_contract_syscall(
                     address,
-                    selector.unwrap(),
+                    selector,
                     data.span()
-                ).unwrap();
+                ).expect('Multicall : HTLC call failed');
             }
         }
     }
