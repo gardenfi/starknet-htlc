@@ -17,10 +17,11 @@ mod Multicall {
     pub impl Multicall of super::IMulticall<ContractState>{
         fn multicall(self : @ContractState, address : ContractAddress , call_data : Array<Array<felt252>>){
             for mut data in call_data{
-                let selector = data.pop_front().unwrap();
+                let selector = data.pop_front();
+                assert(selector.is_none(), 'Invalid call data');
                 call_contract_syscall(
                     address,
-                    selector,
+                    selector.unwrap(),
                     data.span()
                 ).unwrap();
             }
