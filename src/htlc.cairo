@@ -230,6 +230,7 @@ pub mod HTLC {
         ///          chains.
         ///          Signers cannot generate orders with the same secret hash or override an
         ///          existing order.
+        /// @param   initiator  Contract address of the user authorizing initiation via signature.
         /// @param   redeemer  Contract address of the redeemer.
         /// @param   timelock  Timelock period for the HTLC order.
         /// @param   amount  Amount of tokens to trade.
@@ -405,14 +406,14 @@ pub mod HTLC {
         ///          there is no duplicate order.
         ///          It creates a new order with the provided parameters and stores it in the
         ///          'orders' mapping.
-        ///          It emits an 'Initiated' event with the order ID, secret hash, and amount.
-        ///          It transfers the specified amount of tokens from the initiator to the contract
-        ///          address.
-        /// @param   initiator  Address of the initiator of the atomic swap.
-        /// @param   redeemer  Address of the redeemer of the atomic swap.
-        /// @param   secret_hash  Hash of the secret used for redemption.
-        /// @param   timelock  Timelock block number for the atomic swap.
-        /// @param   amount  Amount of tokens to be traded in the atomic swap.
+        ///          It transfers the specified amount of tokens from the funder to the contract
+        ///          address. The caller is responsible for emitting the corresponding event.
+        /// @param   funder_  Address the locked tokens are transferred from.
+        /// @param   initiator_  Address of the initiator of the atomic swap.
+        /// @param   redeemer_  Address of the redeemer of the atomic swap.
+        /// @param   timelock_  Timelock block number for the atomic swap.
+        /// @param   amount_  Amount of tokens to be traded in the atomic swap.
+        /// @param   secret_hash_  Hash of the secret used for redemption.
         fn _initiate(
             ref self: ContractState,
             funder_: ContractAddress,
@@ -503,8 +504,10 @@ pub mod HTLC {
         /// @notice  .
         /// @dev     Provides checks to ensure:
         ///              1. Redeemer is not the null address.
+        ///              2. Initiator is not the null address.
         ///              3. Timelock is greater than 0.
         ///              4. Amount is not zero.
+        /// @param   initiator  Contract address of the initiator.
         /// @param   redeemer  Contract address of the redeemer.
         /// @param   timelock  Timelock period for the HTLC order.
         /// @param   amount  Amount of tokens to trade.
