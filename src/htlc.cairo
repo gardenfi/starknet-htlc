@@ -87,7 +87,7 @@ pub mod HTLC {
     /// SNIP-12 type hash of the `Initiate` message signed for
     /// `initiate_with_signature`.
     pub const INITIATE_TYPE_HASH: felt252 = selector!(
-        "\"Initiate\"(\"redeemer\":\"ContractAddress\",\"amount\":\"u256\",\"timelock\":\"u128\",\"secretHash\":\"u128*\",\"verifyingContract\":\"ContractAddress\")\"u256\"(\"low\":\"u128\",\"high\":\"u128\")",
+        "\"Initiate\"(\"redeemer\":\"ContractAddress\",\"amount\":\"u256\",\"timelock\":\"u128\",\"secretHash\":\"u128*\",\"verifyingContract\":\"ContractAddress\",\"valid_until\":\"u128\")\"u256\"(\"low\":\"u128\",\"high\":\"u128\")",
     );
     /// SNIP-12 type hash of `u256`, which is hashed as a nested struct of its `low`
     /// and `high` limbs.
@@ -293,19 +293,24 @@ pub mod HTLC {
             timelock: u128,
             amount: u256,
             secret_hash: [u128; 2],
+            valid_until: u128,
             signature: Array<felt252>,
         ) {
             self.safe_params(initiator, redeemer, timelock, amount);
+            let block_info = get_block_info().unbox();
+            assert!(block_info.block_number.into() < valid_until, "HTLC: Expired signature");
+
             let verifying_contract = get_contract_address();
-            let intiate = Initiate {
+            let initiate = Initiate {
                 redeemer,
                 amount,
                 timelock,
                 secretHash: secret_hash,
                 verifyingContract: verifying_contract,
+                valid_until
             };
             let chain_id = self.chain_id.read();
-            let message_hash = intiate.get_message_hash(chain_id, initiator);
+            let message_hash = initiate.get_message_hash(chain_id, initiator);
 
             let is_valid = ISRC6Dispatcher { contract_address: initiator }
                 .is_valid_signature(message_hash, signature);
@@ -376,7 +381,9 @@ pub mod HTLC {
                 .orders
                 .write(order_id, Order { fulfilled_at: block_info.block_number.into(), ..order });
 
-            self.token.read().transfer(order.redeemer, order.amount);
+            let transfer_result = self.token.read().transfer(order.redeemer, order.amount);
+            assert!(transfer_result, "ERC20: Transfer failed");
+
             self
                 .emit(
                     Event::Redeemed(Redeemed { order_id, secret_hash: secret_hash_u128, secret }),
@@ -393,14 +400,16 @@ pub mod HTLC {
             assert!(order.redeemer.is_non_zero(), "HTLC: order not initiated");
             assert!(order.fulfilled_at.is_zero(), "HTLC: order fulfilled");
 
-            let block_info = get_block_info().unbox();
-            let current_block = block_info.block_number;
+            let current_block: u128 = get_block_info().unbox().block_number.into();
             assert!(
-                (order.initiated_at + order.timelock) < current_block.into(),
+                (current_block - order.initiated_at) > order.timelock,
                 "HTLC: order not expired",
             );
             self.orders.write(order_id, Order { fulfilled_at: current_block.into(), ..order });
-            self.token.read().transfer(order.initiator, order.amount);
+
+            let transfer_result = self.token.read().transfer(order.initiator, order.amount);
+            assert!(transfer_result, "ERC20: Transfer failed");
+
             self.emit(Event::Refunded(Refunded { order_id }));
         }
 
@@ -414,6 +423,11 @@ pub mod HTLC {
             let order = self.orders.read(order_id);
             assert!(order.redeemer.is_non_zero(), "HTLC: order not initiated");
             assert!(order.fulfilled_at.is_zero(), "HTLC: order fulfilled");
+
+            let block_info = get_block_info().unbox();
+            self
+                .orders
+                .write(order_id, Order { fulfilled_at: block_info.block_number.into(), ..order });
 
             let caller = get_caller_address();
 
@@ -432,12 +446,8 @@ pub mod HTLC {
                 assert!(is_valid_signature, "HTLC: invalid redeemer signature");
             }
 
-            let block_info = get_block_info().unbox();
-            self
-                .orders
-                .write(order_id, Order { fulfilled_at: block_info.block_number.into(), ..order });
-
-            self.token.read().transfer(order.initiator, order.amount);
+            let transfer_result = self.token.read().transfer(order.initiator, order.amount);
+            assert!(transfer_result, "ERC20: Transfer failed");
 
             self.emit(Event::Refunded(Refunded { order_id }));
         }
