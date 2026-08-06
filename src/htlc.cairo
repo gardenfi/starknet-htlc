@@ -11,45 +11,50 @@
 //!          Redeemer function: 1. redeem
 #[starknet::contract]
 pub mod HTLC {
+    use core::array::ArrayTrait;
+    use core::hash::{HashStateExTrait, HashStateTrait};
     use core::num::traits::Zero;
-    use starknet::{ContractAddress, get_caller_address, get_block_info, get_contract_address};
-    use starknet::storage::{
-        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerWriteAccess,
-        StoragePointerReadAccess,
-    };
-    use core::poseidon::{PoseidonTrait};
     use core::option::OptionTrait;
-    use core::traits::{Into, TryInto};
+    use core::poseidon::PoseidonTrait;
     use core::sha256::compute_sha256_u32_array;
-    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use core::traits::{Into, TryInto};
     use openzeppelin::account::interface::{ISRC6Dispatcher, ISRC6DispatcherTrait};
-    use core::hash::{HashStateTrait, HashStateExTrait};
-    use crate::interface::{IHTLC, IMessageHash};
-    use crate::interface::struct_hash::{
-        Initiate, MessageHashInitiate, instantRefund, MessageHashInstantRefund,
+    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use starknet::event::EventEmitter;
+    use starknet::storage::{
+        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StoragePointerWriteAccess,
     };
-    use crate::interface::events::{Initiated, Redeemed, Refunded};
-    use core::starknet::event::EventEmitter;
+    use starknet::syscalls::get_execution_info_v2_syscall;
+    use starknet::{
+        ContractAddress, SyscallResultTrait, get_block_info, get_caller_address,
+        get_contract_address,
+    };
+    use crate::interface::events::{Initiated, InitiatedWithDestinationData, Redeemed, Refunded};
+    use crate::interface::struct_hash::{
+        Initiate, MessageHashInitiate, MessageHashInstantRefund, instantRefund,
+    };
+    use crate::interface::{IHTLC, IMessageHash};
 
 
-    pub const CHAIN_ID: felt252 = 0x534e5f5345504f4c4941; // SN_SEPOLIA
     pub const NAME: felt252 = 'HTLC';
-    pub const VERSION: felt252 = '1';
+    pub const VERSION: felt252 = '2';
 
     pub const INITIATE_TYPE_HASH: felt252 = selector!(
-        "\"Initiate\"(\"redeemer\":\"ContractAddress\",\"amount\":\"u256\",\"timelock\":\"u128\",\"secretHash\":\"u128*\")\"u256\"(\"low\":\"u128\",\"high\":\"u128\")",
+        "\"Initiate\"(\"redeemer\":\"ContractAddress\",\"amount\":\"u256\",\"timelock\":\"u128\",\"secretHash\":\"u128*\",\"verifyingContract\":\"ContractAddress\")\"u256\"(\"low\":\"u128\",\"high\":\"u128\")",
     );
     pub const U256_TYPE_HASH: felt252 = selector!("\"u256\"(\"low\":\"u128\",\"high\":\"u128\")");
 
     pub const INSTANT_REFUND_TYPE_HASH: felt252 = selector!(
-        "\"instantRefund\"(\"orderID\":\"felt\")",
+        "\"instantRefund\"(\"orderID\":\"felt\",\"verifyingContract\":\"ContractAddress\")",
     );
 
 
     #[storage]
     struct Storage {
         pub token: IERC20Dispatcher,
-        pub orders: Map::<felt252, Order>,
+        pub orders: Map<felt252, Order>,
+        pub chain_id: felt252,
     }
 
     #[event]
@@ -58,11 +63,12 @@ pub mod HTLC {
         Initiated: Initiated,
         Redeemed: Redeemed,
         Refunded: Refunded,
+        InitiatedWithDestinationData: InitiatedWithDestinationData,
     }
 
     #[derive(Drop, Serde, starknet::Store, Debug)]
     pub struct Order {
-        is_fulfilled: bool,
+        fulfilled_at: u128,
         initiator: ContractAddress,
         redeemer: ContractAddress,
         initiated_at: u128,
@@ -72,6 +78,8 @@ pub mod HTLC {
 
     #[constructor]
     fn constructor(ref self: ContractState, token: ContractAddress) {
+        let tx_info = get_execution_info_v2_syscall().unwrap_syscall().unbox().tx_info.unbox();
+        self.chain_id.write(tx_info.chain_id);
         self.token.write(IERC20Dispatcher { contract_address: token });
     }
 
@@ -79,6 +87,10 @@ pub mod HTLC {
     pub impl HTLC of IHTLC<ContractState> {
         fn token(self: @ContractState) -> ContractAddress {
             self.token.read().contract_address
+        }
+
+        fn get_order(self: @ContractState, order_id: felt252) -> Order {
+            self.orders.read(order_id)
         }
 
         /// @notice  Signers can create an order with order params.
@@ -96,11 +108,52 @@ pub mod HTLC {
             redeemer: ContractAddress,
             timelock: u128,
             amount: u256,
-            secret_hash: [u32; 8],
+            secret_hash: [u128; 2],
         ) {
-            self.safe_params(redeemer, timelock, amount);
+            self.safe_params(get_caller_address(), redeemer, timelock, amount);
             let sender = get_caller_address();
-            self._initiate(sender, sender, redeemer, timelock, amount, secret_hash);
+            let order_id = self._initiate(sender, sender, redeemer, timelock, amount, secret_hash);
+
+            self
+                .emit(
+                    Event::Initiated(
+                        Initiated { order_id, secret_hash: secret_hash, amount: amount },
+                    ),
+                );
+        }
+
+        /// @notice  Signers can create an order with order params.
+        /// @dev     Secret used to generate secret hash for initiation should be generated randomly
+        /// @dev     Calls _initiate internally.
+        ///          and SHA-256 hash should be used to support hashing methods on other non-EVM
+        ///          chains.
+        ///          Signers cannot generate orders with the same secret hash or override an
+        ///          existing order.
+        /// @param   redeemer  Contract address of the redeemer.
+        /// @param   timelock  Timelock period for the HTLC order.
+        /// @param   amount  Amount of tokens to trade.
+        /// @param   secret_hash  SHA-256 hash of the secret used for redemption.
+        /// @param   destination_data  Destination data for the HTLC order.
+        fn initiate_with_destination_data(
+            ref self: ContractState,
+            redeemer: ContractAddress,
+            timelock: u128,
+            amount: u256,
+            secret_hash: [u128; 2],
+            destination_data: Array<felt252>,
+        ) {
+            self.safe_params(get_caller_address(), redeemer, timelock, amount);
+            let sender = get_caller_address();
+            let order_id = self._initiate(sender, sender, redeemer, timelock, amount, secret_hash);
+
+            self
+                .emit(
+                    Event::InitiatedWithDestinationData(
+                        InitiatedWithDestinationData {
+                            order_id, secret_hash, amount, destination_data,
+                        },
+                    ),
+                );
         }
 
         /// @notice  Allows a signer to initiate an order on behalf of another initiator.
@@ -118,11 +171,57 @@ pub mod HTLC {
             redeemer: ContractAddress,
             timelock: u128,
             amount: u256,
-            secret_hash: [u32; 8],
+            secret_hash: [u128; 2],
         ) {
-            self.safe_params(redeemer, timelock, amount);
+            self.safe_params(initiator, redeemer, timelock, amount);
             let sender = get_caller_address();
-            self._initiate(sender, initiator, redeemer, timelock, amount, secret_hash);
+            assert!(sender != redeemer, "HTLC: sender == redeemer");
+
+            let order_id = self
+                ._initiate(sender, initiator, redeemer, timelock, amount, secret_hash);
+
+            self
+                .emit(
+                    Event::Initiated(
+                        Initiated { order_id, secret_hash: secret_hash, amount: amount },
+                    ),
+                );
+        }
+
+        /// @notice  Allows a signer to initiate an order on behalf of another initiator.
+        /// @dev     Ensures the provided parameters are valid before initiating the order.
+        ///          Calls `_initiate` with the sender as the initiator.
+        ///
+        /// @param   initiator    Contract address of the actual initiator.
+        /// @param   redeemer     Contract address of the redeemer.
+        /// @param   timelock     Timelock period for the HTLC order.
+        /// @param   amount       Amount of tokens to be locked.
+        /// @param   secret_hash  SHA-256 hash of the secret used for redemption.
+        /// @param   destination_data
+        fn initiate_on_behalf_with_destination_data(
+            ref self: ContractState,
+            initiator: ContractAddress,
+            redeemer: ContractAddress,
+            timelock: u128,
+            amount: u256,
+            secret_hash: [u128; 2],
+            destination_data: Array<felt252>,
+        ) {
+            self.safe_params(initiator, redeemer, timelock, amount);
+            let sender = get_caller_address();
+            assert!(sender != redeemer, "HTLC: sender == redeemer");
+
+            let order_id = self
+                ._initiate(sender, initiator, redeemer, timelock, amount, secret_hash);
+
+            self
+                .emit(
+                    Event::InitiatedWithDestinationData(
+                        InitiatedWithDestinationData {
+                            order_id, secret_hash, amount, destination_data,
+                        },
+                    ),
+                );
         }
 
         /// @notice  Signers can create an order with order params and signature for a user.
@@ -143,19 +242,30 @@ pub mod HTLC {
             redeemer: ContractAddress,
             timelock: u128,
             amount: u256,
-            secret_hash: [u32; 8],
+            secret_hash: [u128; 2],
             signature: Array<felt252>,
         ) {
-            let intiate = Initiate { redeemer, amount, timelock, secretHash: secret_hash };
-
-            let message_hash = intiate.get_message_hash(initiator);
+            self.safe_params(initiator, redeemer, timelock, amount);
+            let verifying_contract = get_contract_address();
+            let intiate = Initiate {
+                redeemer,
+                amount,
+                timelock,
+                secretHash: secret_hash,
+                verifyingContract: verifying_contract,
+            };
+            let chain_id = self.chain_id.read();
+            let message_hash = intiate.get_message_hash(chain_id, initiator);
 
             let is_valid = ISRC6Dispatcher { contract_address: initiator }
                 .is_valid_signature(message_hash, signature);
             let is_valid_signature = is_valid == starknet::VALIDATED || is_valid == 1;
             assert!(is_valid_signature, "HTLC: invalid initiator signature");
 
-            self._initiate(initiator, initiator, redeemer, timelock, amount, secret_hash);
+            let order_id = self
+                ._initiate(initiator, initiator, redeemer, timelock, amount, secret_hash);
+
+            self.emit(Event::Initiated(Initiated { order_id, secret_hash, amount }));
         }
 
         /// @notice  Signers with the correct secret to an order's secret hash can redeem to claim
@@ -163,32 +273,63 @@ pub mod HTLC {
         /// @dev     Signers are not allowed to redeem an order with the wrong secret or redeem the
         /// same order multiple times.
         /// @param   order_id  Order ID of the HTLC order.
-        /// @param   secret  Secret used to redeem an order.
-        fn redeem(ref self: ContractState, order_id: felt252, secret: Array<u32>) {
+        /// @param   secret  Secret used to redeem an order ([u32; 8] = 256 bits).
+        fn redeem(ref self: ContractState, order_id: felt252, secret: [u32; 8]) {
             let order = self.orders.read(order_id);
             assert!(order.redeemer.is_non_zero(), "HTLC: order not initiated");
-            assert!(!order.is_fulfilled, "HTLC: order fulfilled");
+            assert!(order.fulfilled_at.is_zero(), "HTLC: order fulfilled");
 
-            let secret_hash = compute_sha256_u32_array(secret.clone(), 0, 0);
-            let initiator_address: felt252 = order.initiator.try_into().unwrap();
+            // Convert [u32; 8] to Array<u32> for SHA256 computation
+            let [s0, s1, s2, s3, s4, s5, s6, s7] = secret;
+            let secret_array: Array<u32> = array![s0, s1, s2, s3, s4, s5, s6, s7];
+            let secret_hash_u32 = compute_sha256_u32_array(secret_array, 0, 0);
 
+            // Convert [u32; 8] SHA256 output to [u128; 2]
+            // Each u128 is formed from 4 consecutive u32 values (4 × 32 = 128 bits)
+            let [h0, h1, h2, h3, h4, h5, h6, h7] = secret_hash_u32;
+            let secret_hash_u128: [u128; 2] = [
+                h0.into() * 0x1000000000000000000000000_u128
+                    + h1.into() * 0x10000000000000000_u128
+                    + h2.into() * 0x100000000_u128
+                    + h3.into(),
+                h4.into() * 0x1000000000000000000000000_u128
+                    + h5.into() * 0x10000000000000000_u128
+                    + h6.into() * 0x100000000_u128
+                    + h7.into(),
+            ];
+
+            let initiator_address: felt252 = order
+                .initiator
+                .try_into()
+                .expect('HTLC: invalid initiator address');
+            let redeemer_address: felt252 = order
+                .redeemer
+                .try_into()
+                .expect('HTLC: invalid redeemer address');
+            let chain_id = self.chain_id.read();
             assert!(
-                self.generate_order_id(CHAIN_ID, secret_hash, initiator_address) == order_id,
+                self
+                    .generate_order_id(
+                        chain_id,
+                        secret_hash_u128,
+                        initiator_address,
+                        redeemer_address,
+                        order.timelock,
+                        order.amount,
+                    ) == order_id,
                 "HTLC: incorrect secret",
             );
 
-            let updated_order = Order {
-                initiator: order.initiator,
-                redeemer: order.redeemer,
-                amount: order.amount,
-                timelock: order.timelock,
-                initiated_at: order.initiated_at,
-                is_fulfilled: true,
-            };
-            self.orders.write(order_id, updated_order);
+            let block_info = get_block_info().unbox();
+            self
+                .orders
+                .write(order_id, Order { fulfilled_at: block_info.block_number.into(), ..order });
 
             self.token.read().transfer(order.redeemer, order.amount);
-            self.emit(Event::Redeemed(Redeemed { order_id, secret_hash, secret }));
+            self
+                .emit(
+                    Event::Redeemed(Redeemed { order_id, secret_hash: secret_hash_u128, secret }),
+                );
         }
 
         /// @notice  Signers can refund the locked assets after the timelock block number.
@@ -200,7 +341,7 @@ pub mod HTLC {
             let order = self.orders.read(order_id);
 
             assert!(order.redeemer.is_non_zero(), "HTLC: order not initiated");
-            assert!(!order.is_fulfilled, "HTLC: order fulfilled");
+            assert!(order.fulfilled_at.is_zero(), "HTLC: order fulfilled");
 
             let block_info = get_block_info().unbox();
             let current_block = block_info.block_number;
@@ -208,58 +349,48 @@ pub mod HTLC {
                 (order.initiated_at + order.timelock) < current_block.into(),
                 "HTLC: order not expired",
             );
-
-            let updated_order = Order {
-                initiator: order.initiator,
-                redeemer: order.redeemer,
-                amount: order.amount,
-                timelock: order.timelock,
-                initiated_at: order.initiated_at,
-                is_fulfilled: true,
-            };
-            self.orders.write(order_id, updated_order);
-
-            let contract_address = get_contract_address();
-            let balance = self.token.read().balance_of(contract_address);
-            assert!(balance >= order.amount, "HTLC: insufficient contract balance");
+            self.orders.write(order_id, Order { fulfilled_at: current_block.into(), ..order });
             self.token.read().transfer(order.initiator, order.amount);
-
             self.emit(Event::Refunded(Refunded { order_id }));
         }
 
         /// @notice  Redeemers can let the initiator refund the locked assets before the expiry
         /// block number.
-        /// @dev     Signers cannot refund the same order multiple times.
+        /// @dev     If the caller is the redeemer, no signature is required. If the caller is not
+        ///          the redeemer, a valid signature from the redeemer is required.
+        ///          Signers cannot refund the same order multiple times.
         ///          Funds will be safely transferred to the initiator.
         ///
         /// @param   order_id  Order ID of the HTLC order.
         /// @param   signature  SNIP-12 signature provided by the redeemer for instant refund.
+        ///                     Can be empty if the caller is the redeemer.
         fn instant_refund(ref self: ContractState, order_id: felt252, signature: Array<felt252>) {
-            let refund = instantRefund { orderID: order_id };
-
             let order = self.orders.read(order_id);
-            let message_hash = refund.get_message_hash(order.redeemer);
+            assert!(order.redeemer.is_non_zero(), "HTLC: order not initiated");
+            assert!(order.fulfilled_at.is_zero(), "HTLC: order fulfilled");
 
-            let is_valid = ISRC6Dispatcher { contract_address: order.redeemer }
-                .is_valid_signature(message_hash, signature);
-            let is_valid_signature = is_valid == starknet::VALIDATED || is_valid == 1;
-            assert!(is_valid_signature, "HTLC: invalid redeemer signature");
-            assert!(!order.is_fulfilled, "HTLC: order fulfilled");
+            let caller = get_caller_address();
 
-            let updated_order = Order {
-                initiator: order.initiator,
-                redeemer: order.redeemer,
-                amount: order.amount,
-                timelock: order.timelock,
-                initiated_at: order.initiated_at,
-                is_fulfilled: true,
-            };
+            // If caller is not the redeemer, require a valid signature
+            if caller != order.redeemer {
+                let verifying_contract = get_contract_address();
+                let refund = instantRefund {
+                    orderID: order_id, verifyingContract: verifying_contract,
+                };
+                let chain_id = self.chain_id.read();
+                let message_hash = refund.get_message_hash(chain_id, order.redeemer);
 
-            self.orders.write(order_id, updated_order);
+                let is_valid = ISRC6Dispatcher { contract_address: order.redeemer }
+                    .is_valid_signature(message_hash, signature);
+                let is_valid_signature = is_valid == starknet::VALIDATED || is_valid == 1;
+                assert!(is_valid_signature, "HTLC: invalid redeemer signature");
+            }
 
-            let contract_address = get_contract_address();
-            let balance = self.token.read().balance_of(contract_address);
-            assert!(balance >= order.amount, "HTLC: insufficient contract balance");
+            let block_info = get_block_info().unbox();
+            self
+                .orders
+                .write(order_id, Order { fulfilled_at: block_info.block_number.into(), ..order });
+
             self.token.read().transfer(order.initiator, order.amount);
 
             self.emit(Event::Refunded(Refunded { order_id }));
@@ -289,12 +420,21 @@ pub mod HTLC {
             redeemer_: ContractAddress,
             timelock_: u128,
             amount_: u256,
-            secret_hash_: [u32; 8],
-        ) {
+            secret_hash_: [u128; 2],
+        ) -> felt252 {
             assert!(initiator_ != redeemer_, "HTLC: same initiator & redeemer");
 
-            let initiator_address: felt252 = initiator_.try_into().unwrap();
-            let order_id = self.generate_order_id(CHAIN_ID, secret_hash_, initiator_address);
+            let initiator_address: felt252 = initiator_
+                .try_into()
+                .expect('HTLC: invalid initiator address');
+            let redeemer_address: felt252 = redeemer_
+                .try_into()
+                .expect('HTLC: invalid redeemer address');
+            let chain_id = self.chain_id.read();
+            let order_id = self
+                .generate_order_id(
+                    chain_id, secret_hash_, initiator_address, redeemer_address, timelock_, amount_,
+                );
 
             let order: Order = self.orders.read(order_id);
             assert!(!order.redeemer.is_non_zero(), "HTLC: duplicate order");
@@ -303,7 +443,7 @@ pub mod HTLC {
             let current_block = block_info.block_number;
 
             let create_order = Order {
-                is_fulfilled: false,
+                fulfilled_at: 0,
                 initiator: initiator_,
                 redeemer: redeemer_,
                 initiated_at: current_block.into(),
@@ -312,42 +452,48 @@ pub mod HTLC {
             };
             self.orders.write(order_id, create_order);
 
-            let balance = self.token.read().balance_of(funder_);
-            assert!(balance >= amount_, "ERC20: Insufficient balance");
-
-            let allowance = self.token.read().allowance(funder_, get_contract_address());
-            assert!(allowance >= amount_, "ERC20: insufficient allowance");
-
             let transfer_result = self
                 .token
                 .read()
                 .transfer_from(funder_, get_contract_address(), amount_);
             assert!(transfer_result, "ERC20: Transfer failed");
 
-            self
-                .emit(
-                    Event::Initiated(
-                        Initiated { order_id, secret_hash: secret_hash_, amount: amount_ },
-                    ),
-                );
+            order_id
         }
 
-        /// @notice  Generates a unique swap ID based on chain ID, asset address, and user address.
+        /// @notice  Generates a unique order ID based on chain ID, secret hash, initiator,
+        /// redeemer, timelock, amount, and contract address.
         /// @dev     Uses the Poseidon hash function to ensure uniqueness and security.
+        ///          Follows the same order as Solidity: chainId, secretHash, initiator, redeemer,
+        ///          timelock, amount, address(this)
         ///
-        /// @param   chain_id       Chain ID where the swap is being executed.
-        /// @param   asset_address  Address of the asset being swapped.
-        /// @param   user_address   Address of the user initiating the swap.
+        /// @param   chain_id           Chain ID where the swap is being executed.
+        /// @param   secret_hash        SHA-256 hash of the secret used for redemption.
+        /// @param   initiator_address  Address of the initiator of the atomic swap.
+        /// @param   redeemer_address   Address of the redeemer of the atomic swap.
+        /// @param   timelock           Timelock period for the HTLC order.
+        /// @param   amount             Amount of tokens to be traded in the atomic swap.
         fn generate_order_id(
             self: @ContractState,
             chain_id: felt252,
-            secret_hash: [u32; 8],
+            secret_hash: [u128; 2],
             initiator_address: felt252,
+            redeemer_address: felt252,
+            timelock: u128,
+            amount: u256,
         ) -> felt252 {
+            let contract_address: felt252 = get_contract_address()
+                .try_into()
+                .expect('HTLC: invalid contract address');
             let mut state = PoseidonTrait::new();
             state = state.update(chain_id);
             state = state.update_with(secret_hash);
             state = state.update(initiator_address);
+            state = state.update(redeemer_address);
+            state = state.update(timelock.into());
+            state = state.update(amount.low.into());
+            state = state.update(amount.high.into());
+            state = state.update(contract_address);
             state.finalize()
         }
     }
@@ -362,10 +508,16 @@ pub mod HTLC {
         /// @param   redeemer  Contract address of the redeemer.
         /// @param   timelock  Timelock period for the HTLC order.
         /// @param   amount  Amount of tokens to trade.
+        #[inline]
         fn safe_params(
-            self: @ContractState, redeemer: ContractAddress, timelock: u128, amount: u256,
+            self: @ContractState,
+            initiator: ContractAddress,
+            redeemer: ContractAddress,
+            timelock: u128,
+            amount: u256,
         ) {
             assert!(redeemer.is_non_zero(), "HTLC: zero address redeemer");
+            assert!(initiator.is_non_zero(), "HTLC: zero address initiator");
             assert!(timelock > 0, "HTLC: zero timelock");
             assert!(amount > 0, "HTLC: zero amount");
         }

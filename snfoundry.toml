@@ -1,5 +1,12 @@
 # Visit https://foundry-rs.github.io/starknet-foundry/appendix/snfoundry-toml.html for more information
 
+# [sncast.sepolia]
+# url = "https://starknet-sepolia.infura.io/v3/API_KEY"
+# account = "deployer"
+
+[sncast.default]
+account = "deployer"
+
 # [sncast.myprofile1]                                    # Define a profile name
 # url = "http://127.0.0.1:5050/"                         # Url of the RPC provider
 # accounts_file = "../account-file"                      # Path to the file with the account data
