@@ -213,8 +213,8 @@ pub trait IHTLC<TContractState> {
     ///
     /// The signature is checked with SRC-6 `is_valid_signature` against the
     /// `Initiate` struct hash, which covers the redeemer, amount, timelock, secret
-    /// hash and this contract's address, so it cannot be replayed against a
-    /// different order or a different deployment.
+    /// hash, expiry and this contract's address, so it cannot be replayed against a
+    /// different order, a different deployment, or after `valid_until`.
     ///
     /// # Arguments
     ///
@@ -223,6 +223,8 @@ pub trait IHTLC<TContractState> {
     /// * `timelock` - Number of blocks after initiation before a refund is allowed.
     /// * `amount` - Amount of tokens to lock.
     /// * `secret_hash` - SHA-256 hash of the secret, as two big-endian `u128` limbs.
+    /// * `valid_until` - Block number after which the signature is no longer
+    ///   accepted.
     /// * `signature` - SNIP-12 signature over the `Initiate` message, produced by
     ///   `initiator`.
     ///
@@ -230,6 +232,7 @@ pub trait IHTLC<TContractState> {
     ///
     /// * If `initiator` or `redeemer` is the zero address.
     /// * If `timelock` or `amount` is zero.
+    /// * If the current block number is not less than `valid_until`.
     /// * If `signature` is not a valid signature by `initiator` over this order.
     /// * If `initiator` is the `redeemer`.
     /// * If an order with these exact parameters already exists.
@@ -240,7 +243,7 @@ pub trait IHTLC<TContractState> {
     /// ```
     /// htlc
     ///     .initiate_with_signature(
-    ///         initiator, redeemer, 100, 1000, secret_hash, signature,
+    ///         initiator, redeemer, 100, 1000, secret_hash, valid_until, signature,
     ///     );
     /// ```
     fn initiate_with_signature(
@@ -250,6 +253,7 @@ pub trait IHTLC<TContractState> {
         timelock: u128,
         amount: u256,
         secret_hash: [u128; 2],
+        valid_until: u128,
         signature: Array<felt252>,
     );
 

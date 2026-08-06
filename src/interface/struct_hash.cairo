@@ -16,7 +16,7 @@
 //! use starknet_htlc::interface::struct_hash::Initiate;
 //!
 //! let initiate = Initiate {
-//!     redeemer, amount, timelock, secretHash: secret_hash, verifyingContract,
+//!     redeemer, amount, timelock, secretHash: secret_hash, verifyingContract, valid_until,
 //! };
 //! let message_hash = initiate.get_message_hash(chain_id, initiator);
 //! ```
@@ -48,6 +48,8 @@ pub struct Initiate {
     pub secretHash: [u128; 2],
     /// Address of the HTLC contract the signature is valid for.
     pub verifyingContract: ContractAddress,
+    /// Block number at which signature expires
+    pub valid_until: u128
 }
 
 /// The message a redeemer signs to let an order be refunded before its timelock
@@ -88,6 +90,7 @@ pub impl StructHashInitiate of IStructHash<Initiate> {
         state = state.update_with(*self.timelock);
         state = state.update_with(self.secretHash.span().get_struct_hash());
         state = state.update_with(*self.verifyingContract);
+        state = state.update_with(*self.valid_until);
         state.finalize()
     }
 }
