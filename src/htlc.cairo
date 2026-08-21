@@ -51,7 +51,6 @@
 /// ```
 #[starknet::contract]
 pub mod HTLC {
-    use core::array::ArrayTrait;
     use core::hash::{HashStateExTrait, HashStateTrait};
     use core::num::traits::Zero;
     use core::option::OptionTrait;
