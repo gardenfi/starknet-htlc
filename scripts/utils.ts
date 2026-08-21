@@ -25,7 +25,7 @@ export async function getCompiledCode(filename: string) {
 }
 
 export async function writeDeploymentInfo(
-  contract: "htlc" | "multicall",
+  contract: "htlc",
   network: string,
   deployInfo: any
 ) {
