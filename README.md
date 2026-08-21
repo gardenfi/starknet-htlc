@@ -1,86 +1,74 @@
-# **Cairo HTLC for Garden Finance**  
+# **Cairo HTLC for Garden Finance**
 
-## **Introduction**  
+## **Introduction**
 
-This repository contains the Cairo smart contract implementation for the **Garden Finance** project. It enables **Hashed Time-Locked Contract (HTLC)** functionality on **Starknet**, facilitating secure cross-chain transactions.  
+This repository contains the Cairo smart contract implementation for the **Garden Finance** project. It enables **Hashed Time-Locked Contract (HTLC)** functionality on **Starknet**, facilitating secure cross-chain atomic swaps. One contract instance is deployed per ERC-20 token.
 
-## **Prerequisites**  
+## **Prerequisites**
 
-Ensure you have the following dependencies installed:  
+The toolchain versions are pinned in [`.tool-versions`](.tool-versions) and are best installed with [asdf](https://asdf-vm.com/):
 
-- **Node.js** (v16 or higher)  
-- **Yarn** (package manager)  
-- **Starknet Devnet** (for local testing)  
-- **Hardhat** (for Ethereum testing)  
-- **Cairo** - [Cairo setup guide][cairo-book]
-
-[cairo-book]: https://book.cairo-lang.org/
-
-
-## **Getting Started**  
-
-Follow these steps to set up your development environment:  
-
-### **1. Install Dependencies**  
-Run the following command to install required packages:  
+- **Scarb** — the Cairo package manager / build tool
+- **Starknet Foundry** — provides `snforge` (tests) and `sncast` (declare/deploy)
+- **Cairo** — see the [Cairo setup guide](https://book.cairo-lang.org/)
 
 ```bash
-yarn install
+asdf install
 ```
 
-### **2. Compile the Contract**  
-Use Scarb to compile the Cairo smart contract: 
+## **Getting Started**
+
+### **1. Build the contract**
 
 ```bash
 scarb build
 ```
-### **3. Start Development Networks**  
-Run merry to start a Multichain local environment for testing:
+
+Sierra and CASM artifacts are emitted to `target/dev/`.
+
+### **2. Run the tests**
+
+The contract is tested entirely with native Cairo tests (`snforge`); no external
+devnet, Node.js, or cross-chain services are required.
 
 ```bash
-merry go
+snforge test
 ```
-### **4. Run Tests**  
-Execute the test suite to ensure everything is working correctly:
+
+Format the Cairo sources with:
 
 ```bash
-yarn test
+scarb fmt
 ```
 
-## **Deployment**  
+## **Deployment**
 
-### Prerequisites
-- Node.js and Yarn installed
-- `.env` file with the following variables:
-DEPLOYER_PRIVATE_KEY=your_private_key
-DEPLOYER_ADDRESS=your_account_address
+Deployment is done with `sncast` via [`scripts/deploy.sh`](scripts/deploy.sh). One
+HTLC instance is deployed per ERC-20 token; the constructor takes that token's
+address.
 
-### **1. Install Dependencies**  
-Run the following command to install required packages:  
+### **1. Configure a deployer account**
+
+Import (or create) an account known to `sncast`. The default account name is
+`deployer` (see [`snfoundry.toml`](snfoundry.toml)):
 
 ```bash
-yarn install
+sncast account import \
+  --name deployer \
+  --address 0x<account_address> \
+  --private-key 0x<private_key> \
+  --type oz
 ```
 
-### **2.Build the contract**  
-```bash
-scarb build
-```
-### **3.Deploy Contract**  
-
-#### HTLC Contract
+### **2. Deploy**
 
 ```bash
-# Sepolia Testnet
-yarn deploy:htlc sepolia "https://starknet-sepolia.public.blastapi.io" <token_address>
+# ./scripts/deploy.sh <rpc_url> <token_address>
 
-# Mainnet
-yarn deploy:htlc mainnet "https://your-mainnet-rpc" <token_address>
-
-# Local Devnet
-yarn deploy:htlc devnet "http://127.0.0.1:5050" <token_address>
-
-# Example
-yarn deploy:htlc sepolia "https://starknet-sepolia.public.blastapi.io" 0x4718F5A0FC34CC1AF16A1CDEE98FFB20C31F5CD61D6AB07201858F4287C938D
+# Sepolia example
+./scripts/deploy.sh https://starknet-sepolia.public.blastapi.io 0x4718F5A0FC34CC1AF16A1CDEE98FFB20C31F5CD61D6AB07201858F4287C938D
 ```
-After successful deployment, a JSON file named .<contract>_<network>_<contract_address>.json will be created in the project root directory containing all deployment details including contract address, transaction hash, and network information.
+
+The script builds the contract, declares the `HTLC` class, and deploys an instance
+bound to the given token, printing the resulting class hash and contract address.
+Override the account name with the `SNCAST_ACCOUNT` environment variable.
