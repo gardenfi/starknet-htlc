@@ -17,16 +17,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Toolchain versions track .tool-versions (scarb 2.20.0 / starknet-foundry 0.63.0).
-      - name: Set up Scarb
-        uses: software-mansion/setup-scarb@v1
-        with:
-          scarb-version: "2.20.0"
-
-      - name: Set up Starknet Foundry
-        uses: software-mansion/setup-snforge@v1
-        with:
-          starknet-foundry-version: "0.63.0"
+      # Installs scarb + starknet-foundry at the versions pinned in .tool-versions.
+      - name: Install toolchain (asdf)
+        uses: asdf-vm/actions/install@v4
 
       - name: Check formatting
         run: scarb fmt --check
