@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Toolchain versions track .tool-versions (scarb 2.20.0 / starknet-foundry 0.63.0).
+      - name: Set up Scarb
+        uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.20.0"
+
+      - name: Set up Starknet Foundry
+        uses: foundry-rs/setup-snforge@v3
+        with:
+          starknet-foundry-version: "0.63.0"
+
+      - name: Check formatting
+        run: scarb fmt --check
+
+      - name: Build
+        run: scarb build
+
+      - name: Run tests
+        run: snforge test
