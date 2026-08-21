@@ -49,7 +49,7 @@ pub struct Initiate {
     /// Address of the HTLC contract the signature is valid for.
     pub verifyingContract: ContractAddress,
     /// Block number at which signature expires
-    pub valid_until: u128
+    pub valid_until: u128,
 }
 
 /// The message a redeemer signs to let an order be refunded before its timelock

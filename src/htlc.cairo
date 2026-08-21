@@ -310,7 +310,7 @@ pub mod HTLC {
                 timelock,
                 secretHash: secret_hash,
                 verifyingContract: verifying_contract,
-                valid_until
+                valid_until,
             };
             let chain_id = self.chain_id.read();
             let message_hash = initiate.get_message_hash(chain_id, initiator);
@@ -405,8 +405,7 @@ pub mod HTLC {
 
             let current_block: u128 = get_block_info().unbox().block_number.into();
             assert!(
-                (current_block - order.initiated_at) > order.timelock,
-                "HTLC: order not expired",
+                (current_block - order.initiated_at) > order.timelock, "HTLC: order not expired",
             );
             self.orders.write(order_id, Order { fulfilled_at: current_block, ..order });
 
