@@ -124,7 +124,9 @@ pub mod HTLC {
     ///
     /// An order that was never initiated reads back with every field zeroed, so a
     /// non-zero `redeemer` is what distinguishes a real order from an absent one.
-    /// The secret hash is not stored; the order ID commits to it instead.
+    /// The order ID commits to the secret hash, which is what settlement
+    /// authenticates against; the `secret_hash` field is stored only for
+    /// off-chain use.
     #[derive(Drop, Serde, starknet::Store, Debug)]
     pub struct Order {
         /// Block number the order was redeemed or refunded at, or `0` while it is
