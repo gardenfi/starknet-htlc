@@ -140,6 +140,8 @@ pub mod HTLC {
         timelock: u128,
         /// Amount of tokens locked.
         amount: u256,
+        /// Secret hash of the order.
+        secret_hash: [u128; 2],
     }
 
     /// Deploys the contract for a single ERC-20 token.
@@ -404,7 +406,7 @@ pub mod HTLC {
                 (current_block - order.initiated_at) > order.timelock,
                 "HTLC: order not expired",
             );
-            self.orders.write(order_id, Order { fulfilled_at: current_block.into(), ..order });
+            self.orders.write(order_id, Order { fulfilled_at: current_block, ..order });
 
             let transfer_result = self.token.read().transfer(order.initiator, order.amount);
             assert!(transfer_result, "ERC20: Transfer failed");
@@ -526,6 +528,7 @@ pub mod HTLC {
                 initiated_at: current_block.into(),
                 timelock: timelock_,
                 amount: amount_,
+                secret_hash: secret_hash_,
             };
             self.orders.write(order_id, create_order);
 
