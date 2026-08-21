@@ -8,10 +8,6 @@ edition = "2024_07" # Cairo Prelude - most commonly used modules, functions, dat
 [dependencies] # used during your build compilation
 starknet = ">=2.9.2"
 openzeppelin = "0.20.0"
-openzeppelin_token = "0.20.0"
-openzeppelin_utils = "0.20.0"
-alexandria_bytes = { git = "https://github.com/keep-starknet-strange/alexandria.git", tag = "v0.5.1" }
-alexandria_encoding = { git = "https://github.com/keep-starknet-strange/alexandria.git", tag = "v0.5.1" }
 
 [dev-dependencies] # used during your test compilation
 snforge_std = "0.48.1"
