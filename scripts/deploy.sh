@@ -40,6 +40,11 @@ if [ "${DRY_RUN:-0}" != "0" ]; then
   echo "==> DRY RUN: transactions will be estimated, not submitted"
 fi
 
+# On a real run, wait for each transaction to be accepted so the declared class
+# exists before the deploy references it. Not needed under --dry-run.
+WAIT_FLAG="--wait"
+[ -n "$DRY_RUN_FLAG" ] && WAIT_FLAG=""
+
 echo "==> Building contract"
 scarb build
 
@@ -58,7 +63,7 @@ echo "class_hash = $CLASS_HASH"
 # Declaring a class that already exists on chain is a no-op error; tolerate it so
 # a re-deploy against the same class still proceeds to the deploy step.
 echo "==> Declaring HTLC (account: $ACCOUNT)"
-sncast --account "$ACCOUNT" declare \
+sncast --account "$ACCOUNT" $WAIT_FLAG declare \
   --url "$RPC_URL" \
   --contract-name HTLC \
   $DRY_RUN_FLAG \
@@ -69,14 +74,14 @@ if [ -n "$DRY_RUN_FLAG" ]; then
   # A dry-run declare does not persist the class on chain, so the deploy can only
   # be simulated once the class is actually declared. Treat "not declared" as an
   # expected outcome of the combined dry run rather than a failure.
-  sncast --account "$ACCOUNT" deploy \
+  sncast --account "$ACCOUNT" $WAIT_FLAG deploy \
     --url "$RPC_URL" \
     --class-hash "$CLASS_HASH" \
     --constructor-calldata "$TOKEN" \
     --dry-run \
     || echo "   note: deploy is simulated only after the class is declared on chain; the declare estimate above is the meaningful dry-run result."
 else
-  sncast --account "$ACCOUNT" deploy \
+  sncast --account "$ACCOUNT" $WAIT_FLAG deploy \
     --url "$RPC_URL" \
     --class-hash "$CLASS_HASH" \
     --constructor-calldata "$TOKEN"
